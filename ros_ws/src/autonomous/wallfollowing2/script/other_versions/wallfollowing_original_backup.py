@@ -15,15 +15,12 @@ import numpy as np
 
 from dynamic_reconfigure.server import Server
 from wallfollowing2.cfg import wallfollowing2Config
-from statistics import mean
-import time
-
 
 TOPIC_DRIVE_PARAMETERS = "/input/drive_param/autonomous"
 TOPIC_LASER_SCAN = "/sim_scan"
 
 last_speed = 0
-
+print('running')
 
 class Parameters():
     def __init__(self, default_values):
@@ -80,8 +77,7 @@ def get_scan_as_cartesian(laser_scan):
         ranges.shape[0])
 
     laser_range = laser_scan.angle_max - laser_scan.angle_min
-    usable_range_angle = 180
-    usable_range = math.radians(usable_range_angle)
+    usable_range = math.radians(parameters.usable_laser_range)
     if usable_range < laser_range:
         skip_left = int((-laser_scan.angle_min - usable_range / 2) / laser_range * ranges.shape[0])  # nopep8
         skip_right = int((laser_scan.angle_max - usable_range / 2) / laser_range * ranges.shape[0])  # nopep8
@@ -97,88 +93,7 @@ def get_scan_as_cartesian(laser_scan):
     points[:, 0] = -np.sin(angles) * ranges
     points[:, 1] = np.cos(angles) * ranges
 
-    length = len(ranges)
-    #obstacles in front?
-    bodySizeB = 0.18 + 0.5
-
-    # #search by gates 1
-    # -----------------------------------------------------------------------------------------------------------------
-    # gate_size = 60  #100 laser points
-    # gate_interval = 5
-    # gate_angle = (float(gate_size)/length) * usable_range # angle of gate in rad
-    # safe_margin = (0.5 * bodySizeB)/np.sin(gate_angle/2)
-    #
-    # gate = np.zeros((length - gate_size)//gate_interval)
-    # for i in range((length - gate_size)//gate_interval):
-    #     if min(ranges[i*gate_interval + gate_size/2 - ]) >= safe_margin:
-    #         gate[i] = sum(ranges[i*gate_interval : i*gate_interval + gate_size - 1])
-    #
-    #
-    # max_gate = np.argmax(gate)
-    # middle_index = max_gate * gate_interval + gate_size/2
-
-    # angle_max_range = angles[middle_index]
-    # max_range = ranges[middle_index]
-    # -----------------------------------------------------------------------------------------------------------------
-
-    # search by gates 2
-    safe_margin = 0.5
-    gate_angle = 5  # degrees, search every * degrees
-    number_of_detections = usable_range_angle//gate_angle - 1
-    detection = [[0] for k in range(number_of_detections)]
-
-    for i in range(number_of_detections):  #only consider the conditions usable_range_angle <=180
-
-        gate_rad = math.radians(-usable_range_angle/2 + (i+1)*gate_angle)
-
-        points_x_plus_y = points[:, 1] + points[:, 0]/np.tan(gate_rad)    # y + x/-tan(-theta)
-        if gate_rad < 0:
-            for j in range(length):
-                if 0.5 * bodySizeB/-np.sin(gate_rad) > points_x_plus_y[j] > 0.5 * bodySizeB/np.sin(gate_rad):
-                    if ranges[j] < safe_margin:
-                        detection[i] = [0]
-                        break
-                    else:
-                        detection[i].append(ranges[j])
-        elif gate_rad > 0:
-            for j in range(length):
-                if 0.5 * bodySizeB/-np.sin(gate_rad) < points_x_plus_y[j] < 0.5 * bodySizeB/np.sin(gate_rad):
-                    if ranges[j] < safe_margin:
-                        detection[i] = [0]
-                        break
-                    else:
-                        detection[i].append(ranges[j])
-        else:
-            for j in range(length):
-                if 0.1 > points[j, 0] > -0.1:
-                    if ranges[j] < safe_margin:
-                        detection[i] = [0]
-                        break
-                    else:
-                        detection[i].append(ranges[j])
-        detection[i] = mean(detection[i])
-
-    max_gate = np.argmax(detection)
-    print(detection)
-    print(detection[max_gate])
-    print(max_gate)
-    angle_max_range = math.radians(-usable_range_angle/2 + (max_gate + 1) * gate_angle)
-    max_range = 10  #only use to visualize the target direction, doesn't matter what value it is.
-
-    p11 = Point(0.5 * bodySizeB/-np.cos(angle_max_range), 0)
-    p12 = Point(max_range * -np.sin(angle_max_range) + 0.5 * bodySizeB/-np.cos(angle_max_range),
-                max_range * np.cos(angle_max_range))
-    p21 = Point(0.5 * bodySizeB / np.cos(angle_max_range), 0)
-    p22 = Point(max_range * -np.sin(angle_max_range) + 0.5 * bodySizeB / np.cos(angle_max_range),
-                max_range * np.cos(angle_max_range))
-    show_line_in_rviz(4, [p11, p12],
-                      color=ColorRGBA(1, 0.4, 0, 1), line_width=0.005)
-    show_line_in_rviz(5, [p21, p22],
-                      color=ColorRGBA(1, 0.4, 0, 1), line_width=0.005)
-    show_line_in_rviz(6, [Point(0, 0), Point(0, safe_margin)],
-                      color=ColorRGBA(0.5, 0.4, 0.7, 1), line_width=0.01)
-
-    return points, angle_max_range, max_range
+    return points
 
 
 def find_left_right_border(points, margin_relative=0.1):
@@ -190,22 +105,24 @@ def find_left_right_border(points, margin_relative=0.1):
     return margin + np.argmax(distances) + 1
 
 
-def follow_walls(angle_max_range, max_range, left_circle, right_circle, barrier, delta_time):
+def follow_walls(left_circle, right_circle, barrier, delta_time):
     global last_speed
 
     prediction_distance = parameters.corner_cutting + \
         parameters.straight_smoothing * last_speed
 
     predicted_car_position = Point(0, prediction_distance)
-    target_direction = Point(max_range * -np.sin(angle_max_range), max_range * np.cos(angle_max_range))
     left_point = left_circle.get_closest_point(predicted_car_position)
     right_point = right_circle.get_closest_point(predicted_car_position)
 
-    error = (predicted_car_position.y * - np.tan(angle_max_range)) / \
+    target_position = Point(
+        (left_point.x + right_point.x) / 2,
+        (left_point.y + right_point.y) / 2)
+    error = (target_position.x - predicted_car_position.x) / \
         prediction_distance
-
     if math.isnan(error) or math.isinf(error):
         error = 0
+
     steering_angle = pid.update_and_get_correction(
         error, delta_time)
 
@@ -224,35 +141,26 @@ def follow_walls(angle_max_range, max_range, left_circle, right_circle, barrier,
     last_speed = relative_speed
     speed = map(0, 1, parameters.min_throttle, parameters.max_throttle, relative_speed)  # nopep8
     steering_angle = steering_angle * map(parameters.high_speed_steering_limit_dead_zone, 1, 1, parameters.high_speed_steering_limit, relative_speed)  # nopep8
-    steering_angle_limit = 0.4
-    if abs(steering_angle) > steering_angle_limit:
-        steering_angle = steering_angle*steering_angle_limit/abs(steering_angle)
-    # print('speed_before:',speed)
-    speed = speed*np.cos(abs(steering_angle/(steering_angle_limit*1.1)))
+    print('steering:', steering_angle)
+    print('speed:', speed)
     drive(steering_angle, speed)
-    # print('steering_angle:', steering_angle)
-    # print('speed:', speed)
 
-    # show_line_in_rviz(2, [left_point, right_point],
-    #                   color=ColorRGBA(1, 1, 1, 0.3), line_width=0.005)
-    show_line_in_rviz(2, [Point(0, 0), predicted_car_position],
+    show_line_in_rviz(2, [left_point, right_point],
                       color=ColorRGBA(1, 1, 1, 0.3), line_width=0.005)
-    # show_line_in_rviz(4, [predicted_car_position,
-    #                       target_position], color=ColorRGBA(1, 0.4, 0, 1))
+    show_line_in_rviz(3, [Point(0, 0), predicted_car_position],
+                      color=ColorRGBA(1, 1, 1, 0.3), line_width=0.005)
+    show_line_in_rviz(4, [predicted_car_position,
+                          target_position], color=ColorRGBA(1, 0.4, 0, 1))
 
-    # show_line_in_rviz(
-    #     5, [Point(-2, barrier), Point(2, barrier)], color=ColorRGBA(1, 1, 0, 1))
-
-    show_line_in_rviz(3, [Point(0, 0), target_direction],
-                      color=ColorRGBA(1, 0.4, 0, 1), line_width=0.005)
+    show_line_in_rviz(
+        5, [Point(-2, barrier), Point(2, barrier)], color=ColorRGBA(1, 1, 0, 1))
 
 
 def handle_scan(laser_scan, delta_time):
     if parameters is None:
         return
 
-    points, angle_max_range, max_range = get_scan_as_cartesian(laser_scan)
-
+    points = get_scan_as_cartesian(laser_scan)
 
     if points.shape[0] == 0:
         rospy.logwarn("Skipping current laser scan message since it contains no finite values.")  # nopep8
@@ -270,7 +178,7 @@ def handle_scan(laser_scan, delta_time):
     barrier_end = int(points.shape[0] * (0.5 + parameters.barrier_size_realtive))  # nopep8
     barrier = np.max(points[barrier_start: barrier_end, 1])
 
-    follow_walls(angle_max_range, max_range, left_circle, right_circle, barrier, delta_time)
+    follow_walls(left_circle, right_circle, barrier, delta_time)
 
     show_circle_in_rviz(left_circle, left_wall, 0)
     show_circle_in_rviz(right_circle, right_wall, 1)
@@ -287,27 +195,7 @@ def laser_callback(scan_message):
         delta_time = scan_time - last_scan
         handle_scan(scan_message, delta_time)
 
-
     last_scan = scan_time
-
-
-# '''
-#     laser scan in simulation:
-#
-#
-#                         (0 degree, middle point)
-#                         |
-#                         |
-#                         |
-#                         |
-#                         |
-#         (90)--------------------------- (-90)
-#                         |
-#                         |
-#                         |
-#                         |
-# (180 degree, end point) | (-180 degree, start point)
-# '''
 
 
 def dynamic_configuration_callback(config, level):

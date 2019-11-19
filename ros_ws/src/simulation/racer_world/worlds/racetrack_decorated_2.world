@@ -50,10 +50,11 @@
                     </surface>
                 </collision>
             </link>
+
             <link name="walls-collision-link">
                 <collision name="walls-collision">
                     <geometry>
-                        <!-- Relative path defined in package.xml -->
+                        
                         <mesh><uri>model://walls.dae</uri></mesh>
                     </geometry>
                     <surface>
@@ -71,10 +72,11 @@
                     </contact>
                 </sensor>
             </link>
+
             <link name="decoration-collision-link">
                 <collision name="decoration-collision">
                     <geometry>
-                        <!-- Relative path defined in package.xml -->
+                      
                         <mesh><uri>model://decoration_colliders_2.dae</uri></mesh>
                     </geometry>
                     <surface>
@@ -92,6 +94,7 @@
                     </contact>
                 </sensor>
             </link>
+
         </model>
     </world>
 </sdf>

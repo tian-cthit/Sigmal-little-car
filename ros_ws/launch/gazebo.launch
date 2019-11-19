@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
-    <arg name="world" default="racetrack_decorated_2"/>
+    <arg name="world" default="simple_track"/>
     <arg name="paused" default="false"/>
     <arg name="use_sim_time" default="true"/>
     <arg name="gui" default="true"/>
     <arg name="debug" default="false"/>
     <arg name="verbose" default="true"/>
-    <arg name="use_gpu" default="true"/>
+    <arg name="use_gpu" default="false"/>
     <arg name="joystick_type" default="xbox360"/>
     <arg name="visualize_lidar" default="false"/>
-    <arg name="emergency_stop" default="true"/>
+    <arg name="emergency_stop" default="false"/>
 
     <!-- Mode Override
         1 forces manual driving
